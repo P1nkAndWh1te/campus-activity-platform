@@ -1,0 +1,13 @@
+target/
+*.md
+.git/
+.gitignore
+.idea/
+*.iml
+.vscode/
+04_成果输出/
+*.log
+*.dump
+downloads/
+02_资料与素材/本机运行环境归档/
+.env

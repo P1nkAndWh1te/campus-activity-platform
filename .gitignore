@@ -1,0 +1,14 @@
+target/
+*.log
+*.dump
+03_执行过程/campus_activity_backup_*.sql
+
+.idea/
+.vscode/
+*.iml
+
+downloads/
+02_资料与素材/本机运行环境归档/
+
+.env
+application-local.yml

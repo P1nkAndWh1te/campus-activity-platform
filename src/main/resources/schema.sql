@@ -1,0 +1,95 @@
+-- 校园活动预约与核销平台 - 数据库建表脚本
+-- 数据库：campus_activity
+
+CREATE DATABASE IF NOT EXISTS campus_activity
+    DEFAULT CHARACTER SET utf8mb4
+    COLLATE utf8mb4_0900_ai_ci;
+
+USE campus_activity;
+
+-- 用户表
+CREATE TABLE IF NOT EXISTS app_user (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    phone VARCHAR(20) NOT NULL,
+    password VARCHAR(100) NOT NULL,
+    nickname VARCHAR(50) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'USER',
+    status INT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 活动分类表
+CREATE TABLE IF NOT EXISTS activity_category (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL,
+    sort INT NOT NULL DEFAULT 0,
+    status INT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 活动表
+CREATE TABLE IF NOT EXISTS activity (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    category_id BIGINT NOT NULL,
+    title VARCHAR(100) NOT NULL,
+    description VARCHAR(500) DEFAULT NULL,
+    location VARCHAR(100) NOT NULL,
+    total_quota INT NOT NULL,
+    available_quota INT NOT NULL,
+    start_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    reservation_start_time DATETIME NOT NULL,
+    reservation_end_time DATETIME NOT NULL,
+    status INT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 活动预约表
+CREATE TABLE IF NOT EXISTS activity_reservation (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    activity_id BIGINT NOT NULL,
+    reservation_code VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'RESERVED',
+    reserved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    canceled_at DATETIME DEFAULT NULL,
+    verified_at DATETIME DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY reservation_code (reservation_code),
+    UNIQUE KEY uk_user_activity (user_id, activity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 核销记录表
+CREATE TABLE IF NOT EXISTS verification_record (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    reservation_id BIGINT NOT NULL,
+    reservation_code VARCHAR(50) NOT NULL,
+    activity_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    operator_id BIGINT NOT NULL,
+    verified_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_reservation_id (reservation_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 通知记录表（RabbitMQ 消费者写入）
+CREATE TABLE IF NOT EXISTS notification (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    reservation_id BIGINT NOT NULL,
+    activity_title VARCHAR(200) NOT NULL,
+    message VARCHAR(500) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
