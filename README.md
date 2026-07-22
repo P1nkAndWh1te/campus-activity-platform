@@ -1,431 +1,332 @@
 # 校园活动预约与核销平台
 
-基于 Spring Boot 3 + MySQL + Redis 的校园活动预约后端系统，用于 Java 后端实习简历展示。
+基于 Spring Boot 3、MySQL、Redis 和 RabbitMQ 的校园活动预约与核销后端系统。项目围绕校园讲座、比赛、社团活动等场景，完成用户报名、名额扣减、预约码核销和活动详情缓存等核心链路，用于 Java 后端实习项目展示。
+
+## 项目定位
+
+本项目第一版 MVP 聚焦后端主链路，不做前端页面，不加入优惠券、秒杀、复杂 RBAC 等扩展能力。目标是证明以下能力：
+
+- 能使用 Spring Boot 3 搭建标准后端项目
+- 能设计 MySQL 表结构并完成业务 CRUD
+- 能通过唯一索引和条件更新保证预约一致性
+- 能使用 JWT 完成登录态校验
+- 能使用 Redis 做活动详情缓存
+- 能使用 RabbitMQ 解耦预约成功后的通知写入
+- 能提供可复现的本地运行和接口验收脚本
 
 ## 技术栈
 
-| 技术 | 说明 |
-|------|------|
+| 技术 | 用途 |
+| --- | --- |
 | Java 17+ | 开发语言 |
-| Spring Boot 3.3.5 | 应用框架 |
-| MySQL 8.4.10 | 关系型数据库 |
-| MyBatis-Plus 3.5.9 | ORM 框架 |
-| Redis 5.0.14 | 缓存 |
-| RabbitMQ 3.12 | 消息队列（异步通知） |
-| JWT (jjwt 0.12.6) | 登录认证 |
+| Spring Boot 3.3.5 | Web 应用框架 |
+| MyBatis-Plus 3.5.9 | 数据访问 |
+| MySQL 8.x | 业务数据存储 |
+| Redis | 活动详情缓存 |
+| RabbitMQ | 预约成功通知异步处理 |
+| JWT | 登录态认证 |
 | BCrypt | 密码加密 |
-| Knife4j 4.5.0 | 接口文档 |
-| Jackson | JSON 序列化 |
-| Maven | 构建工具 |
-| Docker Compose | 容器化部署 |
+| Knife4j | 接口文档 |
+| Maven | 构建管理 |
+| Docker Compose | 本地容器化运行 |
 
-## 功能列表
+## 核心功能
 
 ### 用户模块
-- [x] 手机号注册
-- [x] 账号登录（返回 JWT）
-- [x] 查询当前用户信息
+
+- 手机号注册
+- 登录并返回 JWT
+- 查询当前登录用户信息
 
 ### 活动模块
-- [x] 活动分类查询
-- [x] 活动列表分页查询（仅上架活动）
-- [x] 活动详情查询
-- [x] 管理员创建活动
-- [x] 管理员修改活动
-- [x] 管理员上下架活动
+
+- 查询活动分类
+- 分页查询上架活动
+- 查询活动详情
+- 管理员创建活动
+- 管理员修改活动
+- 管理员上下架活动
 
 ### 预约模块
-- [x] 用户预约活动
-- [x] 一人一单（唯一索引防重）
-- [x] 条件扣库存防超卖
-- [x] 事务保证数据一致
-- [x] 查询我的预约
-- [x] 取消预约 + 库存回滚
+
+- 用户预约活动
+- 一人一单限制
+- 活动名额条件扣减
+- 查询我的预约
+- 取消预约并返还名额
 
 ### 核销模块
-- [x] 管理员按预约码查询预约
-- [x] 管理员核销预约
-- [x] 状态校验（已取消/已核销不可重复核销）
-- [x] 核销记录持久化
 
-### 缓存模块
-- [x] Redis Cache-Aside 模式缓存活动详情
-- [x] 空值缓存防穿透（5 分钟 TTL）
-- [x] 随机 TTL 防缓存雪崩（30 分钟 + 0~5 分钟随机抖动）
-- [x] 管理员更新/上下架时自动清除缓存
+- 管理员按预约码查询预约
+- 管理员核销预约
+- 防止取消后核销
+- 防止重复核销
+- 保存核销记录
 
-### 消息队列模块
-- [x] RabbitMQ Topic Exchange 声明（campus.reservation）
-- [x] 预约成功后事务提交时异步发送通知消息
-- [x] 消费者监听写入通知记录表
-- [x] 失败重试（最多 3 次）
+### 缓存与消息
 
-### 基础设施
-- [x] 统一响应封装（Result）
-- [x] 全局异常处理
-- [x] JWT 登录拦截器
-- [x] Knife4j 接口文档
+- Redis Cache-Aside 查询活动详情
+- 空值缓存防止缓存穿透
+- TTL 随机抖动降低集中失效风险
+- 预约成功后通过 RabbitMQ 异步写入通知记录
 
 ## 项目结构
 
-```
-src/main/java/com/campus/
-├── common/                          # 公共组件
-│   ├── BusinessException.java       # 业务异常
-│   ├── GlobalExceptionHandler.java  # 全局异常处理器
-│   ├── Result.java                  # 统一响应
-│   └── UserContext.java             # 用户上下文（ThreadLocal）
-├── config/                          # 配置类
-│   ├── AppConfig.java               # BCrypt 配置
-│   ├── CacheConfig.java             # Redis 序列化配置
-│   └── WebConfig.java               # 拦截器配置
-├── controller/                      # 控制器
-│   ├── ActivityCategoryController.java
-│   ├── ActivityController.java
-│   ├── AdminActivityController.java
-│   ├── AdminVerificationController.java
-│   ├── AuthController.java
-│   ├── HealthController.java
-│   ├── ReservationController.java
-│   └── UserController.java
-├── dto/                             # 数据传输对象
-│   ├── ActivityCreateRequest.java
-│   ├── ActivityVO.java
-│   ├── LoginRequest.java
-│   ├── LoginResponse.java
-│   ├── RegisterRequest.java
-│   ├── ReservationVO.java
-│   └── UserVO.java
-├── entity/                          # 实体类
-│   ├── Activity.java
-│   ├── ActivityCategory.java
-│   ├── ActivityReservation.java
-│   ├── AppUser.java
-│   └── VerificationRecord.java
-├── interceptor/
-│   └── LoginInterceptor.java        # JWT 拦截器
-├── mapper/                          # MyBatis-Plus Mapper
-│   ├── ActivityCategoryMapper.java
-│   ├── ActivityMapper.java
-│   ├── ActivityReservationMapper.java
-│   ├── AppUserMapper.java
-│   └── VerificationRecordMapper.java
-├── service/                         # 业务逻辑层
-│   ├── ActivityService.java
-│   ├── ReservationService.java
-│   ├── UserService.java
-│   └── VerificationService.java
-├── util/
-│   └── JwtUtil.java                 # JWT 工具类
-├── CampusActivityApplication.java   # 启动类
-└── DataInitCheck.java               # 数据库连接检查（启动时）
+```text
+src/main/java/com/campus
+├── common       # 统一响应、业务异常、全局异常、用户上下文
+├── config       # Web、Redis、RabbitMQ、密码加密配置
+├── consumer     # RabbitMQ 消费者
+├── controller   # HTTP 接口
+├── dto          # 请求和响应 DTO
+├── entity       # MyBatis-Plus 实体
+├── interceptor  # JWT 登录拦截器
+├── mapper       # MyBatis-Plus Mapper
+├── service      # 业务逻辑
+└── util         # JWT 工具
 ```
 
 ## 数据库设计
 
-### app_user（用户表）
+核心表：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | BIGINT PK | 主键 |
-| phone | VARCHAR(20) UNIQUE | 手机号 |
-| password | VARCHAR(200) | BCrypt 加密密码 |
-| nickname | VARCHAR(50) | 昵称 |
-| role | VARCHAR(20) | 角色（ADMIN/USER） |
-| status | TINYINT | 状态（1 正常 0 禁用） |
-| created_at | DATETIME | 创建时间 |
+| 表名 | 说明 |
+| --- | --- |
+| app_user | 用户表，保存手机号、密码、昵称、角色和状态 |
+| activity_category | 活动分类表 |
+| activity | 活动表，保存名额、时间、地点和上下架状态 |
+| activity_reservation | 预约表，保存预约码和预约状态 |
+| verification_record | 核销记录表 |
+| notification | 预约成功通知记录表 |
 
-### activity_category（活动分类表）
+关键约束：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | BIGINT PK | 主键 |
-| name | VARCHAR(50) | 分类名称 |
+```sql
+UNIQUE KEY uk_user_activity (user_id, activity_id)
+```
 
-### activity（活动表）
+该唯一索引用于兜底保证同一用户不能重复预约同一活动。
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | BIGINT PK | 主键 |
-| category_id | BIGINT FK | 分类 ID |
-| title | VARCHAR(200) | 活动标题 |
-| description | TEXT | 活动描述 |
-| location | VARCHAR(200) | 活动地点 |
-| total_quota | INT | 总名额 |
-| available_quota | INT | 剩余名额 |
-| start_time | DATETIME | 活动开始时间 |
-| end_time | DATETIME | 活动结束时间 |
-| reservation_start_time | DATETIME | 预约开始时间 |
-| reservation_end_time | DATETIME | 预约截止时间 |
-| status | TINYINT | 状态（1 上架 0 下架） |
+库存扣减使用条件更新：
 
-### activity_reservation（预约表）
+```sql
+UPDATE activity
+SET available_quota = available_quota - 1
+WHERE id = ? AND available_quota > 0;
+```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | BIGINT PK | 主键 |
-| user_id | BIGINT FK | 用户 ID |
-| activity_id | BIGINT FK | 活动 ID |
-| reservation_code | VARCHAR(50) UNIQUE | 预约码 |
-| status | VARCHAR(20) | 状态（RESERVED/CANCELED/VERIFIED） |
-| reserved_at | DATETIME | 预约时间 |
-| canceled_at | DATETIME | 取消时间 |
-| verified_at | DATETIME | 核销时间 |
+业务层通过影响行数判断是否扣减成功，避免名额被扣成负数。
 
-**约束：** `UNIQUE KEY uk_user_activity (user_id, activity_id)` 保证一人一单。
-
-### verification_record（核销记录表）
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | BIGINT PK | 主键 |
-| reservation_id | BIGINT UNIQUE | 预约 ID |
-| reservation_code | VARCHAR(50) | 预约码 |
-| activity_id | BIGINT | 活动 ID |
-| user_id | BIGINT | 用户 ID |
-| operator_id | BIGINT | 核销操作员 ID |
-| verified_at | DATETIME | 核销时间 |
-
-## 接口列表
-
-### 健康检查
-
-| 方法 | 路径 | 说明 | 认证 |
-|------|------|------|------|
-| GET | `/api/health` | 健康检查 | 否 |
+## 核心接口
 
 ### 用户接口
 
-| 方法 | 路径 | 说明 | 认证 |
-|------|------|------|------|
-| POST | `/api/auth/register` | 用户注册 | 否 |
-| POST | `/api/auth/login` | 用户登录 | 否 |
-| GET | `/api/users/me` | 查询当前用户 | JWT |
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/auth/register` | 注册 |
+| POST | `/api/auth/login` | 登录 |
+| GET | `/api/users/me` | 查询当前用户 |
 
 ### 活动接口
 
-| 方法 | 路径 | 说明 | 认证 |
-|------|------|------|------|
-| GET | `/api/activity-categories` | 活动分类列表 | 否 |
-| GET | `/api/activities` | 活动分页列表 | 否 |
-| GET | `/api/activities/{id}` | 活动详情 | 否 |
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/activity-categories` | 活动分类 |
+| GET | `/api/activities` | 活动列表 |
+| GET | `/api/activities/{id}` | 活动详情 |
+| POST | `/api/admin/activities` | 管理员创建活动 |
+| PUT | `/api/admin/activities/{id}` | 管理员修改活动 |
+| PUT | `/api/admin/activities/{id}/status` | 管理员上下架活动 |
 
-### 管理端活动接口
+### 预约和核销接口
 
-| 方法 | 路径 | 说明 | 认证 |
-|------|------|------|------|
-| POST | `/api/admin/activities` | 创建活动 | 管理员 JWT |
-| PUT | `/api/admin/activities/{id}` | 修改活动 | 管理员 JWT |
-| PUT | `/api/admin/activities/{id}/status` | 上下架活动 | 管理员 JWT |
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/activities/{id}/reservations` | 预约活动 |
+| DELETE | `/api/reservations/{id}` | 取消预约 |
+| GET | `/api/users/me/reservations` | 我的预约 |
+| GET | `/api/admin/reservations/by-code/{code}` | 按预约码查询 |
+| POST | `/api/admin/verifications` | 核销预约 |
+| GET | `/api/admin/verifications` | 核销记录 |
 
-### 预约接口
+接口文档地址：
 
-| 方法 | 路径 | 说明 | 认证 |
-|------|------|------|------|
-| POST | `/api/activities/{id}/reservations` | 预约活动 | JWT |
-| DELETE | `/api/reservations/{id}` | 取消预约 | JWT |
-| GET | `/api/users/me/reservations` | 我的预约列表 | JWT |
-| GET | `/api/reservations/{id}` | 预约详情 | JWT |
-
-### 管理端核销接口
-
-| 方法 | 路径 | 说明 | 认证 |
-|------|------|------|------|
-| GET | `/api/admin/reservations/by-code/{code}` | 按预约码查询 | 管理员 JWT |
-| POST | `/api/admin/verifications` | 核销预约 | 管理员 JWT |
-| GET | `/api/admin/verifications` | 核销记录列表 | 管理员 JWT |
-
-## 接口文档
-
-启动项目后访问：
-
-```
+```text
 http://localhost:8080/doc.html
 ```
 
 ## 本地运行
 
-### 方式一：Docker Compose（推荐，一键启动）
-
-```powershell
-# 首次使用先复制环境变量示例，并设置自己的 MySQL root 密码
-copy .env.example .env
-
-# 启动所有服务（MySQL + Redis + App）
-docker compose up -d
-
-# 查看日志
-docker compose logs -f app
-
-# 停止
-docker compose down
-```
-
-首次启动会自动：
-- 拉取 MySQL 8.0、Redis 7 Alpine、OpenJDK 17 镜像
-- Maven 多阶段构建打包应用
-- 执行建表脚本初始化数据库
-- 健康检查通过后启动应用
-
-服务就绪后访问：
-- 应用：http://localhost:8080
-- 接口文档：http://localhost:8080/doc.html
-
-### 方式二：本地手动运行
-
 ### 环境要求
 
 - JDK 17+
-- MySQL 8.0+
-- Redis 5.0+（Windows 用户见下方说明）
+- Maven 3.9+
+- MySQL 8.x
+- Redis
+- RabbitMQ
 
-### 1. 创建数据库
+本机 Maven 如果误用 Java 8，可以使用项目内置脚本临时切换到 JDK 25。
+
+### 方式一：Docker Compose
+
+复制环境变量示例：
+
+```powershell
+copy .env.example .env
+```
+
+编辑 `.env`，设置：
+
+```text
+MYSQL_ROOT_PASSWORD=你的MySQL密码
+JWT_SECRET=至少32位随机字符串
+```
+
+启动：
+
+```powershell
+docker compose up -d
+```
+
+停止：
+
+```powershell
+docker compose down
+```
+
+### 方式二：本地手动运行
+
+创建数据库：
 
 ```sql
 CREATE DATABASE IF NOT EXISTS campus_activity DEFAULT CHARSET utf8mb4;
 ```
 
-### 2. 执行建表脚本
-
-PowerShell：
+执行建表脚本：
 
 ```powershell
 Get-Content -Encoding UTF8 src\main\resources\schema.sql | mysql -u root -p --default-character-set=utf8mb4 campus_activity
 ```
 
-### 2.1 可选：导入开发种子数据
-
-`seed-dev.sql` 会创建一个开发管理员账号和 3 个活动分类。它不会自动执行，需要时手动导入：
+可选：导入开发种子数据：
 
 ```powershell
 Get-Content -Encoding UTF8 src\main\resources\seed-dev.sql | mysql -u root -p --default-character-set=utf8mb4 campus_activity
 ```
 
-开发管理员账号：
-
-| 手机号 | 密码 |
-|--------|------|
-| 13900001111 | test123 |
-
-注意：该账号只用于本地开发和演示，正式部署前必须修改密码。
-
-### 2.2 可选：重置为干净演示数据
-
-`reset-demo-data.sql` 会清空本地业务表并重新写入演示数据，只能用于本地演示库：
+可选：重置为干净演示数据：
 
 ```powershell
 Get-Content -Encoding UTF8 src\main\resources\reset-demo-data.sql | mysql -u root -p --default-character-set=utf8mb4 campus_activity
 ```
 
-### 3. 配置运行环境变量
+开发账号：
 
-本地运行不再把数据库密码写死到 `application.yml`，请在当前 PowerShell 会话中设置：
+| 角色 | 手机号 | 密码 |
+| --- | --- | --- |
+| 管理员 | 13900001111 | test123 |
+| 普通用户 | 13800001111 | test123 |
+
+设置运行环境变量：
 
 ```powershell
 $env:MYSQL_PASSWORD="你的MySQL密码"
-$env:JWT_SECRET="至少32位的随机字符串"
+$env:JWT_SECRET="至少32位随机字符串"
 ```
 
-默认 Redis 配置为：
+构建：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-local.ps1
+```
+
+启动：
+
+```powershell
+java -jar target\campus-activity-1.0.0-SNAPSHOT.jar
+```
+
+健康检查：
 
 ```text
-127.0.0.1:6380
+GET http://localhost:8080/api/health
 ```
 
-### 4. 启动 Redis（Windows）
+## 接口验收
 
-本项目使用 `tporadowski/redis`（Redis 5.0.14.1 for Windows）：
-
-```powershell
-# 下载解压后启动
-C:\Redis\redis-server.exe --port 6380
-```
-
-### 5. 安装 RabbitMQ（Windows）
-
-RabbitMQ 需要 Erlang 运行环境，两步安装：
-
-1. 下载并安装 Erlang 26.2：
-   https://erlang.org/download/otp_win64_26.2.5.3.exe
-
-2. 下载并安装 RabbitMQ 3.12：
-   https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.14/rabbitmq-server-3.12.14.exe
-
-3. 启用管理插件并启动：
-```powershell
-cd "C:\Program Files\RabbitMQ Server\rabbitmq_server-3.12.14\sbin"
-.\rabbitmq-plugins.bat enable rabbitmq_management
-.\rabbitmq-server.bat
-```
-
-4. 管理后台：http://localhost:15672（guest/guest）
-
-### 6. 编译运行
-
-```powershell
-# 推荐：自动临时切换到 JDK 25，避免 Maven 误用 Java 8
-$env:MYSQL_PASSWORD="你的MySQL密码"
-$env:JWT_SECRET="至少32位的随机字符串"
-powershell -ExecutionPolicy Bypass -File scripts\build-local.ps1
-
-# 启动应用也需要提供数据库密码
-$env:MYSQL_PASSWORD="你的MySQL密码"
-$env:JWT_SECRET="至少32位的随机字符串"
-java -jar target/campus-activity-1.0.0-SNAPSHOT.jar
-```
-
-### 6. 验证
-
-```bash
-# 健康检查
-curl http://localhost:8080/api/health
-
-# 注册测试用户
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"13800001111","password":"test123","nickname":"测试用户"}'
-
-# 登录获取 Token
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"13800001111","password":"test123"}'
-```
-
-也可以运行项目内置验收脚本：
+项目提供自动化接口验收脚本：
 
 ```powershell
 $env:MYSQL_PASSWORD="你的MySQL密码"
 powershell -ExecutionPolicy Bypass -File scripts\verify-api.ps1
 ```
 
-## 核心实现亮点
+验收脚本会自动执行：
 
-1. **库存防超卖**：使用 MyBatis-Plus `UpdateWrapper` 实现 `UPDATE activity SET available_quota = available_quota - 1 WHERE id = ? AND available_quota > 0`，判断影响行数。
-2. **一人一单**：`activity_reservation` 表 `UNIQUE KEY (user_id, activity_id)` 唯一索引兜底。
-3. **事务一致性**：`@Transactional` 保证库存扣减和预约记录写入原子操作。
-4. **Cache-Aside 缓存模式**：读缓存 → 缓存未命中查 MySQL → 写 Redis，TTL 30 分钟 + 随机 0~5 分钟抖动；空值缓存 5 分钟防穿透。
-5. **Docker 容器化部署**：多阶段构建（Maven 编译 + JRE 运行镜像），docker-compose 编排 MySQL + Redis + App，健康检查依赖启动顺序。
-6. **RabbitMQ 异步解耦**：预约成功后通过事务同步注册 + 事务提交后发送消息，消费者异步写入通知记录；失败重试 3 次保证消息可靠投递。
-7. **JWT 认证 + 角色控制**：`LoginInterceptor` 从 Token 解析用户 ID 和角色，`UserContext` ThreadLocal 存储，Service 层校验权限。
+- 注册普通用户和管理员种子用户
+- 登录并获取 JWT
+- 查询当前用户
+- 查询活动分类
+- 管理员创建活动
+- 查询活动详情
+- 用户预约活动
+- 验证重复预约被拦截
+- 管理员按预约码查询
+- 管理员核销预约
+- 验证重复核销被拦截
+- 取消预约
 
-## 接口验收
-
-项目提供可复用接口验收脚本：
-
-```text
-scripts/verify-api.ps1
-```
-
-验收说明：
+验收记录：
 
 ```text
+03_执行过程/2026-07-22_接口验收记录.md
 04_成果输出/接口验收说明.md
 ```
 
-截至 2026-07-22，已通过脚本验证：
+## 实现亮点
 
-- 注册、登录、JWT、查询当前用户
-- 活动分类查询、管理员创建活动、活动详情查询
-- 用户预约活动、重复预约拦截、查询我的预约
-- 管理员按预约码查询、核销、重复核销拦截
-- 取消预约
+### 1. 一人一单
+
+数据库层使用唯一索引：
+
+```sql
+UNIQUE KEY uk_user_activity (user_id, activity_id)
+```
+
+即使并发请求绕过业务判断，数据库仍能阻止重复预约。
+
+### 2. 防止库存超卖
+
+库存扣减不是先查再减，而是使用条件更新：
+
+```sql
+WHERE id = ? AND available_quota > 0
+```
+
+如果影响行数为 0，说明库存不足，预约失败。
+
+### 3. 事务一致性
+
+预约流程使用 `@Transactional`，保证库存扣减和预约记录写入处于同一个事务中。
+
+### 4. 活动详情缓存
+
+活动详情采用 Cache-Aside 模式：
+
+```text
+查 Redis -> 未命中查 MySQL -> 写入 Redis
+```
+
+不存在的活动写入空值缓存，降低缓存穿透风险。
+
+### 5. 异步通知
+
+预约成功后，在事务提交后发送 RabbitMQ 消息，消费者异步写入通知记录，避免通知逻辑阻塞主流程。
+
+## 当前限制
+
+- 第一版没有前端页面，主要通过接口文档和脚本验收
+- 管理员权限采用简单角色字段 `role`，没有实现复杂 RBAC
+- RabbitMQ 当前用于预约通知，未扩展到秒杀或异步落库
+- 项目仍需后续补充接口截图或 Apifox 测试集合，便于简历展示
+
