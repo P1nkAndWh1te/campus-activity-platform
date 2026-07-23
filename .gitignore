@@ -3,6 +3,10 @@ target/
 *.dump
 03_执行过程/campus_activity_backup_*.sql
 
+# Local workspace notes and showcase materials
+0[1-5]_*/
+scripts/screenshot-evidence.ps1
+
 .idea/
 .vscode/
 *.iml

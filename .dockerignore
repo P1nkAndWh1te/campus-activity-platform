@@ -5,9 +5,9 @@ target/
 .idea/
 *.iml
 .vscode/
-04_成果输出/
+0[1-5]_*/
+scripts/screenshot-evidence.ps1
 *.log
 *.dump
 downloads/
-02_资料与素材/本机运行环境归档/
 .env
